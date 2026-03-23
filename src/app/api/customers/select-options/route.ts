@@ -1,5 +1,13 @@
-// GET /api/customers/select-options — 顧客選択肢一覧
-// 実装は Issue #10 (API-05) で行う
-export async function GET() {
-  return Response.json({ message: 'Not implemented' }, { status: 501 })
+import type { NextRequest } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+// GET /api/customers/select-options — 顧客選択肢一覧（全ロール可）
+export async function GET(_req: NextRequest) {
+  const customers = await prisma.customer.findMany({
+    where: { deletedAt: null },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  })
+
+  return Response.json({ data: customers })
 }

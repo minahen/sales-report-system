@@ -1,90 +1,127 @@
-// GET /api/daily-reports  — 日報一覧（自分）
-// POST /api/daily-reports — 日報作成
-// 実装は Issue #6 (API-01)、Issue #7 (API-02) で行う
 import type { NextRequest } from 'next/server'
+import { getAuthUser } from '@/lib/request-context'
 import { prisma } from '@/lib/prisma'
-import { getRequestUser } from '@/lib/request'
-import { listQuerySchema } from '@/lib/validations/daily-report'
+import { createReportSchema } from '@/lib/validations/reports'
+import { validationErrorResponse, conflictResponse, badRequestResponse } from '@/lib/api-errors'
+import { formatReport } from '@/lib/formatters/report'
+import type { ReportStatus } from '@/types'
 
-export async function GET(request: NextRequest) {
-  const user = getRequestUser(request)
-  if (!user) {
-    return Response.json(
-      { error: { code: 'SYS-003', message: 'セッションが切れました。再度ログインしてください。' } },
-      { status: 401 }
-    )
+// GET /api/daily-reports — 日報一覧（自分）
+export async function GET(req: NextRequest) {
+  const user = getAuthUser(req)
+  const { searchParams } = req.nextUrl
+
+  const statusParam = searchParams.get('status')
+  const validStatuses = ['draft', 'submitted', 'reviewed']
+  if (statusParam && !validStatuses.includes(statusParam)) {
+    return badRequestResponse()
   }
+  const status = statusParam as ReportStatus | null
+  const yearMonth = searchParams.get('year_month') // YYYY-MM
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+  const perPage = Math.min(100, Math.max(1, parseInt(searchParams.get('per_page') ?? '20', 10)))
 
-  const { searchParams } = new URL(request.url)
-  const queryResult = listQuerySchema.safeParse({
-    status: searchParams.get('status') ?? undefined,
-    year_month: searchParams.get('year_month') ?? undefined,
-    page: searchParams.get('page') ?? undefined,
-    per_page: searchParams.get('per_page') ?? undefined,
-  })
-
-  if (!queryResult.success) {
-    return Response.json(
-      { error: { code: 'VAL-001', message: 'クエリパラメーターが不正です' } },
-      { status: 400 }
-    )
-  }
-
-  const { status, year_month, page, per_page } = queryResult.data
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: Record<string, any> = {
-    salespersonId: user.id,
-  }
-
+  const where: Record<string, unknown> = { salespersonId: user.id }
   if (status) {
     where.status = status
   }
-
-  if (year_month) {
-    const [year, month] = year_month.split('-').map(Number)
+  if (yearMonth && /^\d{4}-\d{2}$/.test(yearMonth)) {
+    const [year, month] = yearMonth.split('-').map(Number)
     const startDate = new Date(year, month - 1, 1)
     const endDate = new Date(year, month, 1)
-    where.reportDate = {
-      gte: startDate,
-      lt: endDate,
-    }
+    where.reportDate = { gte: startDate, lt: endDate }
   }
 
-  const skip = (page - 1) * per_page
-  const [reports, total] = await Promise.all([
+  const [total, reports] = await Promise.all([
+    prisma.dailyReport.count({ where }),
     prisma.dailyReport.findMany({
       where,
+      skip: (page - 1) * perPage,
+      take: perPage,
       orderBy: { reportDate: 'desc' },
-      skip,
-      take: per_page,
-      include: {
-        _count: {
-          select: { visitRecords: true },
-        },
-      },
+      include: { _count: { select: { visitRecords: true } } },
     }),
-    prisma.dailyReport.count({ where }),
   ])
 
-  const data = reports.map((report) => ({
-    id: report.id,
-    report_date: report.reportDate.toISOString().slice(0, 10),
-    status: report.status,
-    visit_count: report._count.visitRecords,
-    updated_at: report.updatedAt.toISOString(),
+  const data = reports.map((r) => ({
+    id: r.id,
+    report_date: r.reportDate.toISOString().split('T')[0],
+    status: r.status,
+    visit_count: r._count.visitRecords,
+    updated_at: r.updatedAt.toISOString(),
   }))
 
   return Response.json({
     data,
-    meta: {
-      page,
-      per_page,
-      total,
-    },
+    meta: { page, per_page: perPage, total },
   })
 }
 
-export async function POST() {
-  return Response.json({ message: 'Not implemented' }, { status: 501 })
+// POST /api/daily-reports — 日報作成
+export async function POST(req: NextRequest) {
+  const user = getAuthUser(req)
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return Response.json(
+      { error: { code: 'SYS-002', message: 'リクエストの形式が正しくありません' } },
+      { status: 400 }
+    )
+  }
+
+  const result = createReportSchema.safeParse(body)
+  if (!result.success) {
+    return validationErrorResponse(result.error.issues)
+  }
+
+  const { report_date, status, problem, plan, visit_records } = result.data
+
+  // 重複チェック
+  const existing = await prisma.dailyReport.findUnique({
+    where: {
+      salespersonId_reportDate: {
+        salespersonId: user.id,
+        reportDate: new Date(report_date),
+      },
+    },
+  })
+  if (existing) {
+    return conflictResponse('BIZ-002', '同じ日付の日報がすでに存在します')
+  }
+
+  const report = await prisma.dailyReport.create({
+    data: {
+      salespersonId: user.id,
+      reportDate: new Date(report_date),
+      status,
+      problem: problem ?? null,
+      plan: plan ?? null,
+      visitRecords: {
+        createMany: {
+          data: visit_records.map((vr) => ({
+            customerId: vr.customer_id,
+            visitContent: vr.visit_content,
+            visitedAt: vr.visited_at ?? null,
+            order: vr.order,
+          })),
+        },
+      },
+    },
+    include: {
+      salesperson: { select: { id: true, name: true } },
+      visitRecords: {
+        include: { customer: { select: { id: true, name: true } } },
+        orderBy: { order: 'asc' },
+      },
+      comments: {
+        include: { commenter: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  })
+
+  return Response.json({ data: formatReport(report) }, { status: 201 })
 }
+
