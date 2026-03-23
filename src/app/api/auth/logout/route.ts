@@ -1,5 +1,36 @@
 // POST /api/auth/logout
-// 実装は Issue #4 (AUTH-01) で行う
-export async function POST() {
-  return new Response(null, { status: 501 })
+import { verifyToken } from '@/lib/auth'
+
+export async function POST(request: Request) {
+  const authHeader = request.headers.get('Authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+  if (!token) {
+    return Response.json(
+      {
+        error: {
+          code: 'SYS-003',
+          message: 'セッションが切れました。再度ログインしてください。',
+        },
+      },
+      { status: 401 },
+    )
+  }
+
+  try {
+    await verifyToken(token)
+  } catch {
+    return Response.json(
+      {
+        error: {
+          code: 'SYS-003',
+          message: 'セッションが切れました。再度ログインしてください。',
+        },
+      },
+      { status: 401 },
+    )
+  }
+
+  // JWTはステートレスなのでサーバー側での無効化は行わない
+  return new Response(null, { status: 204 })
 }
