@@ -16,6 +16,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "type": "module",
+  "prisma": {
+    "seed": "ts-node --project tsconfig.seed.json prisma/seed.ts"
+  },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
       "eslint --fix",
@@ -38,6 +42,7 @@
     "jsdom": "^29.0.1",
     "lint-staged": "^16.4.0",
     "prisma": "^6.19.2",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.57.1",
     "vitest": "^4.1.0"
