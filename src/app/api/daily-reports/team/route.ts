@@ -1,14 +1,110 @@
 // GET /api/daily-reports/team — 部下全員の日報一覧
 // 実装は Issue #6 (API-01) で行う
 import type { NextRequest } from 'next/server'
-import { getAuthUser } from '@/lib/request-context'
-import { isManager, forbiddenResponse } from '@/lib/rbac'
+import { prisma } from '@/lib/prisma'
+import { getRequestUser } from '@/lib/request'
+import { teamListQuerySchema } from '@/lib/validations/daily-report'
 
-export async function GET(req: NextRequest) {
-  const user = getAuthUser(req)
-  if (!isManager(user.role)) {
-    return forbiddenResponse()
+export async function GET(request: NextRequest) {
+  const user = getRequestUser(request)
+  if (!user) {
+    return Response.json(
+      { error: { code: 'SYS-003', message: 'セッションが切れました。再度ログインしてください。' } },
+      { status: 401 }
+    )
   }
 
-  return Response.json({ message: 'Not implemented' }, { status: 501 })
+  if (user.role === 'salesperson') {
+    return Response.json(
+      { error: { code: 'SYS-004', message: 'この操作を行う権限がありません' } },
+      { status: 403 }
+    )
+  }
+
+  const { searchParams } = new URL(request.url)
+  const queryResult = teamListQuerySchema.safeParse({
+    status: searchParams.get('status') ?? undefined,
+    year_month: searchParams.get('year_month') ?? undefined,
+    page: searchParams.get('page') ?? undefined,
+    per_page: searchParams.get('per_page') ?? undefined,
+    salesperson_id: searchParams.get('salesperson_id') ?? undefined,
+  })
+
+  if (!queryResult.success) {
+    return Response.json(
+      { error: { code: 'VAL-001', message: 'クエリパラメーターが不正です' } },
+      { status: 400 }
+    )
+  }
+
+  const { status, year_month, page, per_page, salesperson_id } = queryResult.data
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: Record<string, any> = {}
+
+  // manager は直属の部下のみ、admin は全員
+  if (user.role === 'manager') {
+    where.salesperson = {
+      managerId: user.id,
+    }
+  }
+
+  // salesperson_id クエリで絞り込み
+  if (salesperson_id) {
+    where.salespersonId = salesperson_id
+  }
+
+  if (status) {
+    where.status = status
+  }
+
+  if (year_month) {
+    const [year, month] = year_month.split('-').map(Number)
+    const startDate = new Date(year, month - 1, 1)
+    const endDate = new Date(year, month, 1)
+    where.reportDate = {
+      gte: startDate,
+      lt: endDate,
+    }
+  }
+
+  const skip = (page - 1) * per_page
+  const [reports, total] = await Promise.all([
+    prisma.dailyReport.findMany({
+      where,
+      orderBy: { reportDate: 'desc' },
+      skip,
+      take: per_page,
+      include: {
+        _count: {
+          select: { visitRecords: true },
+        },
+        salesperson: {
+          select: { id: true, name: true },
+        },
+      },
+    }),
+    prisma.dailyReport.count({ where }),
+  ])
+
+  const data = reports.map((report) => ({
+    id: report.id,
+    report_date: report.reportDate.toISOString().slice(0, 10),
+    status: report.status,
+    visit_count: report._count.visitRecords,
+    salesperson: {
+      id: report.salesperson.id,
+      name: report.salesperson.name,
+    },
+    updated_at: report.updatedAt.toISOString(),
+  }))
+
+  return Response.json({
+    data,
+    meta: {
+      page,
+      per_page,
+      total,
+    },
+  })
 }
