@@ -2,11 +2,15 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { removeToken, getStoredUser } from '@/lib/api-client'
+import { useState, useEffect } from 'react'
+import { removeToken, getStoredUser, type StoredUser } from '@/lib/api-client'
 
 export default function GlobalNav() {
   const router = useRouter()
-  const user = getStoredUser()
+  const [user, setUser] = useState<StoredUser | null>(null)
+  useEffect(() => {
+    setUser(getStoredUser())
+  }, [])
   const role = user?.role ?? 'salesperson'
 
   function handleLogout() {

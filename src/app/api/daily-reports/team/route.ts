@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { getAuthUser } from '@/lib/request-context'
 import { isManager, forbiddenResponse } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
+import { badRequestResponse } from '@/lib/api-errors'
 import type { ReportStatus } from '@/types'
 
 // GET /api/daily-reports/team — 部下全員の日報一覧
@@ -14,7 +15,12 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const salespersonId = searchParams.get('salesperson_id')
-  const status = searchParams.get('status') as ReportStatus | null
+  const statusParam = searchParams.get('status')
+  const validStatuses = ['draft', 'submitted', 'reviewed']
+  if (statusParam && !validStatuses.includes(statusParam)) {
+    return badRequestResponse()
+  }
+  const status = statusParam as ReportStatus | null
   const yearMonth = searchParams.get('year_month')
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
   const perPage = Math.min(100, Math.max(1, parseInt(searchParams.get('per_page') ?? '20', 10)))
@@ -26,19 +32,16 @@ export async function GET(req: NextRequest) {
   })
   const subordinateIds = subordinates.map((s) => s.id)
 
+  // salesperson_idが指定されている場合は先に部下チェック
+  if (salespersonId && !subordinateIds.includes(salespersonId)) {
+    // 自分の部下でない担当者は403
+    return forbiddenResponse()
+  }
+
   const where: Record<string, unknown> = {
     salespersonId: salespersonId
       ? salespersonId
       : { in: subordinateIds },
-  }
-
-  // salesperson_idが指定されている場合も部下に限定
-  if (salespersonId && !subordinateIds.includes(salespersonId)) {
-    // 自分の部下でない担当者は返さない（空返却）
-    return Response.json({
-      data: [],
-      meta: { page, per_page: perPage, total: 0 },
-    })
   }
 
   if (status) {

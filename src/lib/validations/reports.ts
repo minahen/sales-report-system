@@ -21,15 +21,25 @@ const visitRecordSchema = z.object({
 })
 
 /** 日報作成スキーマ */
-export const createReportSchema = z.object({
-  report_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'report_dateはYYYY-MM-DD形式で指定してください'),
-  status: z.enum(['draft', 'submitted']),
-  problem: z.string().max(2000, 'RE-07').optional(),
-  plan: z.string().max(2000, 'RE-08').optional(),
-  visit_records: z.array(visitRecordSchema).optional().default([]),
-})
+export const createReportSchema = z
+  .object({
+    report_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'report_dateはYYYY-MM-DD形式で指定してください'),
+    status: z.enum(['draft', 'submitted']),
+    problem: z.string().max(2000, 'RE-07').optional(),
+    plan: z.string().max(2000, 'RE-08').optional(),
+    visit_records: z.array(visitRecordSchema).optional().default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status === 'submitted' && (!data.visit_records || data.visit_records.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'RE-06',
+        path: ['visit_records'],
+      })
+    }
+  })
 
 export type CreateReportInput = z.infer<typeof createReportSchema>
 

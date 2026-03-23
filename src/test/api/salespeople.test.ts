@@ -7,6 +7,7 @@ vi.mock('@/lib/prisma', () => ({
     user: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
@@ -24,6 +25,7 @@ import { prisma } from '@/lib/prisma'
 const mockUser = prisma.user as {
   findMany: ReturnType<typeof vi.fn>
   findUnique: ReturnType<typeof vi.fn>
+  findFirst: ReturnType<typeof vi.fn>
   create: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
   count: ReturnType<typeof vi.fn>
@@ -94,6 +96,7 @@ describe('POST /api/salespeople', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUser.findUnique.mockResolvedValue(null) // メール重複なし
+    mockUser.findFirst.mockResolvedValue(null) // メール重複なし (findFirst用)
     mockUser.create.mockResolvedValue({
       ...sampleSalesperson,
       id: 'new-user',
@@ -134,7 +137,7 @@ describe('POST /api/salespeople', () => {
   })
 
   it('API-SALES-012: 既存のメールアドレスで登録しようとすると409とBIZ-006が返る', async () => {
-    mockUser.findUnique.mockResolvedValue(sampleSalesperson) // 重複あり
+    mockUser.findFirst.mockResolvedValue(sampleSalesperson) // 重複あり
 
     const { POST } = await import('@/app/api/salespeople/route')
     const req = makeRequest('http://localhost/api/salespeople', {
@@ -192,6 +195,7 @@ describe('POST /api/salespeople', () => {
 
     expect(res.status).toBe(400)
     expect(json.error.details).toBeDefined()
+    expect(json.error.details?.some((d: { code: string }) => d.code === 'SE-09')).toBe(true)
   })
 })
 

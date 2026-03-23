@@ -62,7 +62,7 @@ export default function LoginPage() {
     if (user.role === 'salesperson') {
       router.push('/reports')
     } else {
-      router.push('/reports')
+      router.push('/team-reports')
     }
   }
 

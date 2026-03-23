@@ -60,14 +60,15 @@ export async function PATCH(
 
   const { orders } = result.data
 
-  // 存在確認
-  for (const item of orders) {
-    const vr = await prisma.visitRecord.findUnique({
-      where: { id: item.id, reportId },
-    })
-    if (!vr) {
-      return notFoundResponse()
-    }
+  // 一括取得で存在確認（N+1クエリ回避）
+  const existingRecords = await prisma.visitRecord.findMany({
+    where: {
+      id: { in: orders.map((o: { id: string; order: number }) => o.id) },
+      reportId: reportId,
+    },
+  })
+  if (existingRecords.length !== orders.length) {
+    return notFoundResponse()
   }
 
   // トランザクションで並び替え

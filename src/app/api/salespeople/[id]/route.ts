@@ -78,9 +78,9 @@ export async function PUT(
     return conflictResponse('BIZ-007', '自分自身を上長に設定することはできません')
   }
 
-  // メールアドレス重複チェック（自分自身は除く）
+  // メールアドレス重複チェック（自分自身と論理削除済みは除く）
   if (email !== salesperson.email) {
-    const existing = await prisma.user.findUnique({ where: { email } })
+    const existing = await prisma.user.findFirst({ where: { email, deletedAt: null, id: { not: id } } })
     if (existing) {
       return conflictResponse('BIZ-006', 'このメールアドレスはすでに登録されています')
     }

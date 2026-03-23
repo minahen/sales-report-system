@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { getAuthUser } from '@/lib/request-context'
 import { prisma } from '@/lib/prisma'
-import { isManager, forbiddenResponse } from '@/lib/rbac'
+import { isManager } from '@/lib/rbac'
 import { notFoundResponse, validationErrorResponse } from '@/lib/api-errors'
 import { createCommentSchema } from '@/lib/validations/comments'
 
@@ -64,5 +64,3 @@ export async function POST(
   )
 }
 
-// suppress unused import warning
-void forbiddenResponse

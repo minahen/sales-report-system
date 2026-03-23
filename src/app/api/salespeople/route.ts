@@ -69,8 +69,8 @@ export async function POST(req: NextRequest) {
 
   const { name, email, password, role, manager_id } = result.data
 
-  // メールアドレス重複チェック
-  const existing = await prisma.user.findUnique({ where: { email } })
+  // メールアドレス重複チェック（論理削除済みは除く）
+  const existing = await prisma.user.findFirst({ where: { email, deletedAt: null } })
   if (existing) {
     return conflictResponse('BIZ-006', 'このメールアドレスはすでに登録されています')
   }

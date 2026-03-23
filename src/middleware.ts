@@ -24,29 +24,36 @@ export async function middleware(req: NextRequest) {
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
 
   if (!token) {
-    return Response.json(
-      {
-        error: {
-          code: 'SYS-003',
-          message: 'セッションが切れました。再度ログインしてください',
+    // APIリクエストは401、ページリクエストはリダイレクト
+    if (pathname.startsWith('/api/')) {
+      return Response.json(
+        {
+          error: {
+            code: 'SYS-003',
+            message: 'セッションが切れました。再度ログインしてください',
+          },
         },
-      },
-      { status: 401 }
-    )
+        { status: 401 }
+      )
+    }
+    return NextResponse.redirect(new URL('/login', req.url))
   }
 
   const payload = await verifyToken(token)
 
   if (!payload) {
-    return Response.json(
-      {
-        error: {
-          code: 'SYS-003',
-          message: 'セッションが切れました。再度ログインしてください',
+    if (pathname.startsWith('/api/')) {
+      return Response.json(
+        {
+          error: {
+            code: 'SYS-003',
+            message: 'セッションが切れました。再度ログインしてください',
+          },
         },
-      },
-      { status: 401 }
-    )
+        { status: 401 }
+      )
+    }
+    return NextResponse.redirect(new URL('/login', req.url))
   }
 
   // 検証済みユーザー情報をリクエストヘッダーで後続ハンドラーに伝える

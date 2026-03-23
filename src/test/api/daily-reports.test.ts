@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { signToken } from '@/lib/auth'
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -390,5 +389,3 @@ describe('訪問記録 API', () => {
   })
 })
 
-// suppress unused import warning
-void signToken

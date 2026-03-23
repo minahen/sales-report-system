@@ -7,6 +7,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { signToken, verifyToken } from '@/lib/auth'
+import { middleware } from '@/middleware'
+
+function makeMiddlewareRequest(url: string, headers: Record<string, string> = {}): NextRequest {
+  return new NextRequest(`http://localhost${url}`, { headers })
+}
+
+describe('middleware', () => {
+  it('NFT-SEC-001: APIパスへの未認証アクセスは401を返す', async () => {
+    const req = makeMiddlewareRequest('/api/daily-reports')
+    const res = await middleware(req)
+    expect(res.status).toBe(401)
+    const json = await res.json()
+    expect(json.error.code).toBe('SYS-003')
+  })
+
+  it('NFT-SEC-002: 無効トークンで401が返る', async () => {
+    const req = makeMiddlewareRequest('/api/daily-reports', { authorization: 'Bearer invalid.token' })
+    const res = await middleware(req)
+    expect(res.status).toBe(401)
+  })
+})
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -60,13 +81,7 @@ function makeAuthRequest(url: string, options: RequestInit = {}, userId = 'user-
 
 describe('NFT-SEC-001〜006: 認証・認可テスト', () => {
   describe('NFT-SEC-001: 未認証アクセス拒否', () => {
-    it('Authorizationヘッダーなしでは401が返る（ミドルウェアで処理）', async () => {
-      // ミドルウェアが認証を担当しているため、ここでは
-      // ミドルウェアを通過した後のAPIのロール確認をテスト
-      // APIルートは認証済みを前提としているので、
-      // 未認証はミドルウェアレベルで処理される
-
-      // ミドルウェアのverifyTokenをテスト
+    it('無効なトークンはverifyTokenがnullを返す（ミドルウェアレベルの認証確認）', async () => {
       const result = await verifyToken('invalid.token.here')
       expect(result).toBeNull()
     })
