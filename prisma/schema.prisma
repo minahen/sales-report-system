@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// Enum 定義
+// ==========================================
+
+enum Role {
+  salesperson
+  manager
+  admin
+}
+
+enum ReportStatus {
+  draft
+  submitted
+  reviewed
+}
+
+// ==========================================
+// Model 定義
+// ==========================================
+
+/// 営業担当者
+model User {
+  id           String    @id @default(uuid())
+  name         String    @db.VarChar(50)
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  role         Role      @default(salesperson)
+  managerId    String?   @map("manager_id")
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // 自己参照（上長）
+  manager      User?     @relation("ManagerSubordinates", fields: [managerId], references: [id])
+  subordinates User[]    @relation("ManagerSubordinates")
+
+  // リレーション
+  dailyReports DailyReport[]
+  comments     Comment[]
+
+  @@map("users")
+}
+
+/// 顧客マスタ
+model Customer {
+  id        String    @id @default(uuid())
+  name      String    @db.VarChar(100)
+  address   String?   @db.VarChar(200)
+  phone     String?   @db.VarChar(20)
+  industry  String?   @db.VarChar(100)
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // リレーション
+  visitRecords VisitRecord[]
+
+  @@map("customers")
+}
+
+/// 日報
+model DailyReport {
+  id            String       @id @default(uuid())
+  salespersonId String       @map("salesperson_id")
+  reportDate    DateTime     @map("report_date") @db.Date
+  status        ReportStatus @default(draft)
+  problem       String?      @db.Text
+  plan          String?      @db.Text
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  // リレーション
+  salesperson  User          @relation(fields: [salespersonId], references: [id])
+  visitRecords VisitRecord[]
+  comments     Comment[]
+
+  // 同一営業・同一日付の日報は1件のみ
+  @@unique([salespersonId, reportDate])
+  @@map("daily_reports")
+}
+
+/// 訪問記録
+model VisitRecord {
+  id           String   @id @default(uuid())
+  reportId     String   @map("report_id")
+  customerId   String   @map("customer_id")
+  visitContent String   @map("visit_content") @db.Text
+  visitedAt    String?  @map("visited_at") @db.VarChar(5)
+  order        Int
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // リレーション
+  report   DailyReport @relation(fields: [reportId], references: [id])
+  customer Customer    @relation(fields: [customerId], references: [id])
+
+  @@map("visit_records")
+}
+
+/// コメント
+model Comment {
+  id          String   @id @default(uuid())
+  reportId    String   @map("report_id")
+  commenterId String   @map("commenter_id")
+  content     String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // リレーション
+  report    DailyReport @relation(fields: [reportId], references: [id])
+  commenter User        @relation(fields: [commenterId], references: [id])
+
+  @@map("comments")
+}
