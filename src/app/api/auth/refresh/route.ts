@@ -1,5 +1,22 @@
-// POST /api/auth/refresh
-// 実装は Issue #4 (AUTH-01) で行う
-export async function POST() {
-  return Response.json({ message: 'Not implemented' }, { status: 501 })
+import type { NextRequest } from 'next/server'
+import { signToken, getTokenExpiry } from '@/lib/auth'
+import { getAuthUser } from '@/lib/request-context'
+
+// ミドルウェアで認証済みのため、ここに到達したら有効なトークンを持っている
+export async function POST(req: NextRequest) {
+  const user = getAuthUser(req)
+
+  const token = await signToken({
+    sub: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  })
+
+  return Response.json({
+    data: {
+      token,
+      expires_at: getTokenExpiry(),
+    },
+  })
 }
