@@ -3,7 +3,7 @@ REGION     := asia-northeast1
 SERVICE    := sales-report-system
 IMAGE      := $(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(SERVICE)/app
 
-.PHONY: help build push deploy deploy-prod logs
+.PHONY: help build push deploy deploy-prod logs db/migrate db/seed db/studio
 
 help: ## コマンド一覧を表示
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -37,3 +37,12 @@ logs: ## Cloud Runのログを表示
 		--project $(PROJECT_ID) \
 		--limit 100 \
 		--format "value(textPayload)"
+
+db/migrate: ## DBマイグレーションを実行
+	npx prisma migrate dev
+
+db/seed: ## シードデータを投入
+	npx prisma db seed
+
+db/studio: ## Prisma Studioを起動
+	npx prisma studio
