@@ -18,12 +18,23 @@ export interface JwtPayload {
   role: string
 }
 
-export async function signToken(payload: JwtPayload): Promise<string> {
+export interface SignTokenResult {
+  token: string
+  expiresAt: string
+}
+
+/**
+ * JWTトークンを生成し、トークン文字列と有効期限（ISO 8601）を返す。
+ * expires_at はトークンの exp クレームと同一時刻から計算するため、二重管理にならない。
+ */
+export async function signToken(payload: JwtPayload): Promise<SignTokenResult> {
   const secret = getSecret()
-  return new SignJWT(payload)
+  const expiresAt = calculateExpiresAt()
+  const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime(getExpiresIn())
+    .setExpirationTime(new Date(expiresAt))
     .sign(secret)
+  return { token, expiresAt }
 }
 
 export async function verifyToken(token: string): Promise<JwtPayload> {
@@ -41,7 +52,8 @@ export async function comparePassword(password: string, hash: string): Promise<b
 }
 
 /**
- * JWT_EXPIRES_IN文字列（例: '24h', '7d', '60m'）からexpires_atのISO 8601文字列を計算する
+ * JWT_EXPIRES_IN文字列（例: '24h', '7d', '60m'）からexpires_atのISO 8601文字列を計算する。
+ * z.string().min(1) で空文字を先に弾くため、email() より min(1) を先に置く設計と対応している。
  */
 export function calculateExpiresAt(expiresIn: string = getExpiresIn()): string {
   const now = Date.now()

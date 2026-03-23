@@ -1,31 +1,38 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { signToken, verifyToken, hashPassword, comparePassword, calculateExpiresAt } from '@/lib/auth'
+
+const originalExpiresIn = process.env.JWT_EXPIRES_IN
 
 beforeEach(() => {
   process.env.JWT_SECRET = 'test-secret-key-for-unit-tests-min-32-chars'
   process.env.JWT_EXPIRES_IN = '24h'
 })
 
+afterEach(() => {
+  process.env.JWT_EXPIRES_IN = originalExpiresIn
+})
+
 describe('signToken / verifyToken', () => {
-  it('ペイロードを含むJWTトークンを生成できる', async () => {
+  it('ペイロードを含むJWTトークンとexpiresAtを生成できる', async () => {
     const payload = { id: 'user-uuid-001', role: 'salesperson' }
-    const token = await signToken(payload)
+    const { token, expiresAt } = await signToken(payload)
     expect(typeof token).toBe('string')
     expect(token.split('.')).toHaveLength(3)
+    expect(expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   })
 
   it('生成したトークンを検証してペイロードを取得できる', async () => {
     const payload = { id: 'user-uuid-001', role: 'manager' }
-    const token = await signToken(payload)
+    const { token } = await signToken(payload)
     const decoded = await verifyToken(token)
     expect(decoded.id).toBe('user-uuid-001')
     expect(decoded.role).toBe('manager')
   })
 
   it('異なるユーザーIDとロールのトークンを正しく区別できる', async () => {
-    const token1 = await signToken({ id: 'user-001', role: 'salesperson' })
-    const token2 = await signToken({ id: 'user-002', role: 'admin' })
+    const { token: token1 } = await signToken({ id: 'user-001', role: 'salesperson' })
+    const { token: token2 } = await signToken({ id: 'user-002', role: 'admin' })
     const decoded1 = await verifyToken(token1)
     const decoded2 = await verifyToken(token2)
     expect(decoded1.id).toBe('user-001')
@@ -39,7 +46,7 @@ describe('signToken / verifyToken', () => {
   })
 
   it('改ざんされたトークンを検証するとエラーを投げる', async () => {
-    const token = await signToken({ id: 'user-001', role: 'salesperson' })
+    const { token } = await signToken({ id: 'user-001', role: 'salesperson' })
     const parts = token.split('.')
     // ペイロード部分を改ざん
     const tamperedPayload = Buffer.from(JSON.stringify({ id: 'user-001', role: 'admin' })).toString(
@@ -47,6 +54,14 @@ describe('signToken / verifyToken', () => {
     )
     const tamperedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`
     await expect(verifyToken(tamperedToken)).rejects.toThrow()
+  })
+
+  it('有効期限切れのトークンを検証するとエラーを投げる（API-CMN-003 / NFT-SEC-006）', async () => {
+    process.env.JWT_EXPIRES_IN = '1s'
+    const { token } = await signToken({ id: 'user-001', role: 'salesperson' })
+    // 1秒以上待って期限切れにする
+    await new Promise((r) => setTimeout(r, 1100))
+    await expect(verifyToken(token)).rejects.toThrow()
   })
 
   it('JWT_SECRETが未設定の場合にエラーを投げる', async () => {

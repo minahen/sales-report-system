@@ -33,8 +33,16 @@ export async function middleware(request: NextRequest) {
     )
   }
 
+  const jwtSecret = process.env.JWT_SECRET
+  if (!jwtSecret) {
+    return NextResponse.json(
+      { error: { code: 'SYS-002', message: 'サーバーエラーが発生しました。管理者にお問い合わせください。' } },
+      { status: 500 },
+    )
+  }
+
   try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET)
+    const secret = new TextEncoder().encode(jwtSecret)
     const { payload } = await jwtVerify(token, secret)
 
     const requestHeaders = new Headers(request.headers)

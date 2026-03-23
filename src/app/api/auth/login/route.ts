@@ -1,7 +1,7 @@
 // POST /api/auth/login
 import { prisma } from '@/lib/prisma'
 import { loginSchema } from '@/lib/validations/auth'
-import { signToken, comparePassword, calculateExpiresAt } from '@/lib/auth'
+import { signToken, comparePassword } from '@/lib/auth'
 
 const ERROR_MESSAGES: Record<string, string> = {
   'L-01': 'メールアドレスを入力してください',
@@ -49,14 +49,10 @@ export async function POST(request: Request) {
 
   const { email, password } = result.data
 
-  const user = await prisma.user.findFirst({
-    where: {
-      email,
-      deletedAt: null,
-    },
-  })
+  // email は UNIQUE 制約があるため findUnique を使用
+  const user = await prisma.user.findUnique({ where: { email } })
 
-  if (!user) {
+  if (!user || user.deletedAt !== null) {
     return Response.json(
       {
         error: {
@@ -81,14 +77,13 @@ export async function POST(request: Request) {
     )
   }
 
-  const token = await signToken({ id: user.id, role: user.role })
-  const expires_at = calculateExpiresAt()
+  const { token, expiresAt } = await signToken({ id: user.id, role: user.role })
 
   return Response.json(
     {
       data: {
         token,
-        expires_at,
+        expires_at: expiresAt,
         user: {
           id: user.id,
           name: user.name,

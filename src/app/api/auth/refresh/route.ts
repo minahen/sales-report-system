@@ -1,5 +1,5 @@
 // POST /api/auth/refresh
-import { verifyToken, signToken, calculateExpiresAt } from '@/lib/auth'
+import { verifyToken, signToken } from '@/lib/auth'
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get('Authorization')
@@ -32,14 +32,13 @@ export async function POST(request: Request) {
     )
   }
 
-  const newToken = await signToken({ id: payload.id, role: payload.role })
-  const expires_at = calculateExpiresAt()
+  const { token: newToken, expiresAt } = await signToken({ id: payload.id, role: payload.role })
 
   return Response.json(
     {
       data: {
         token: newToken,
-        expires_at,
+        expires_at: expiresAt,
       },
     },
     { status: 200 },
